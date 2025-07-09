@@ -15,7 +15,7 @@ public class GeoRouteService {
 
     private final String apiKey = "09afac95e6454e57ba7a5d63fa13c91d";
 
-    public String extractRouteAndRespond(String message) {
+    public String extractRouteAndRespond(String from, String message) {
         try {
             String[] locations = parseLocationsFromMessage(message);
             if (locations.length != 2) {

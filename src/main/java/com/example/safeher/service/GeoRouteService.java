@@ -1,105 +1,95 @@
 package com.example.safeher.service;
 
 import org.springframework.stereotype.Service;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.net.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 @Service
 public class GeoRouteService {
 
-    private final String apiKey = "09afac95e6454e57ba7a5d63fa13c91d"; // Your actual key
+    private final String apiKey = "09afac95e6454e57ba7a5d63fa13c91d";
 
-    public String extractRouteAndRespond(String message) {
+    public String extractRouteAndRespond(String from, String to) {
         try {
-            // Step 1: Extract locations using regex
-            Pattern pattern = Pattern.compile("from (.*?) to (.*)");
-            Matcher matcher = pattern.matcher(message);
+            double[] startCoords = getCoordinates(from);
+            double[] endCoords = getCoordinates(to);
 
-            if (!matcher.find()) {
-                return "Please use format: 'route from [source] to [destination]'";
-            }
-
-            String source = matcher.group(1).trim();
-            String destination = matcher.group(2).trim();
-
-            // Step 2: Get coordinates
-            double[] srcCoords = getCoordinates(source);
-            double[] destCoords = getCoordinates(destination);
-
-            if (srcCoords == null || destCoords == null) {
+            if (startCoords == null || endCoords == null) {
                 return "Could not get coordinates for provided locations.";
             }
 
-            // Step 3: Build routing request
-            String routingUrl = String.format(
-                    "https://api.geoapify.com/v1/routing?waypoints=%f,%f|%f,%f&mode=walk&apiKey=%s",
-                    srcCoords[0], srcCoords[1], destCoords[0], destCoords[1], apiKey
+            String url = String.format(
+                    "https://api.geoapify.com/v1/routing?waypoints=%f,%f|%f,%f&mode=drive&apiKey=%s",
+                    startCoords[0], startCoords[1], endCoords[0], endCoords[1], apiKey
             );
 
-            URL url = new URL(routingUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("GET");
 
             BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
             StringBuilder response = new StringBuilder();
             String line;
-
             while ((line = in.readLine()) != null) {
                 response.append(line);
             }
-
             in.close();
-            conn.disconnect();
 
-            return "Route fetched successfully! 🛣️ (Details can be viewed on map integration)";
+            JSONObject json = new JSONObject(response.toString());
+            JSONArray features = json.getJSONArray("features");
+            if (!features.isEmpty()) {
+                JSONObject summary = features.getJSONObject(0)
+                        .getJSONObject("properties")
+                        .getJSONObject("summary");
+                double distanceKm = summary.getDouble("distance") / 1000.0;
+                double durationMin = summary.getDouble("duration") / 60.0;
+
+                return String.format("Safe route found:\nDistance: %.2f km\nEstimated time: %.2f mins",
+                        distanceKm, durationMin);
+            } else {
+                return "Could not find a route.";
+            }
+
         } catch (Exception e) {
             return "Error fetching route: " + e.getMessage();
         }
     }
 
-    private double[] getCoordinates(String place) {
+    public double[] getCoordinates(String location) {
         try {
-            String encodedPlace = URLEncoder.encode(place, "UTF-8");
-            String urlStr = String.format(
+            String encoded = URLEncoder.encode(location, "UTF-8");
+            String url = String.format(
                     "https://api.geoapify.com/v1/geocode/search?text=%s&apiKey=%s",
-                    encodedPlace, apiKey
+                    encoded, apiKey
             );
 
-            URL url = new URL(urlStr);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("GET");
 
             BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            StringBuilder json = new StringBuilder();
+            StringBuilder response = new StringBuilder();
             String line;
             while ((line = in.readLine()) != null) {
-                json.append(line);
+                response.append(line);
             }
-
             in.close();
-            conn.disconnect();
 
-            // Extract coordinates from JSON response
-            String latRegex = "\"lat\":([0-9.\\-]+)";
-            String lonRegex = "\"lon\":([0-9.\\-]+)";
-            Pattern latPattern = Pattern.compile(latRegex);
-            Pattern lonPattern = Pattern.compile(lonRegex);
-            Matcher latMatcher = latPattern.matcher(json);
-            Matcher lonMatcher = lonPattern.matcher(json);
+            JSONObject json = new JSONObject(response.toString());
+            JSONArray features = json.getJSONArray("features");
+            if (features.isEmpty()) return null;
 
-            if (latMatcher.find() && lonMatcher.find()) {
-                double lat = Double.parseDouble(latMatcher.group(1));
-                double lon = Double.parseDouble(lonMatcher.group(1));
-                return new double[]{lat, lon};
-            }
+            JSONObject coords = features.getJSONObject(0).getJSONObject("geometry");
+            JSONArray coordsArray = coords.getJSONArray("coordinates");
 
+            return new double[]{coordsArray.getDouble(1), coordsArray.getDouble(0)}; // lat, lon
         } catch (Exception e) {
-            System.out.println("Failed to get coordinates: " + e.getMessage());
+            return null;
         }
-
-        return null;
     }
 }

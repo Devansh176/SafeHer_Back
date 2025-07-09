@@ -1,15 +1,10 @@
 package com.example.safeher.model;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 
-@Setter
-@Getter
+@Data
+@AllArgsConstructor
 public class ChatResponse {
     private String response;
-
-    public ChatResponse(String response) {
-        this.response = response;
-    }
-
 }

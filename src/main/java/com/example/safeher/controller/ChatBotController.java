@@ -1,22 +1,37 @@
 package com.example.safeher.controller;
 
-import com.example.safeher.model.ChatRequest;
-import com.example.safeher.model.ChatResponse;
-import com.example.safeher.service.ChatService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.safeher.service.GeminiService;
+import com.example.safeher.service.RouteService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
+
+import java.util.Map;
 
 @RestController
-@RequestMapping("/api") // <-- Important: This prefix MUST match frontend URL
-@CrossOrigin(origins = "*")
+@RequestMapping("/api")
 public class ChatBotController {
 
-    @Autowired
-    private ChatService chatService;
+    private final GeminiService geminiService;
+    private final RouteService routeService;
 
-    @PostMapping("/chatbot") // Final URL becomes: /api/chatbot
-    public ChatResponse handleChat(@RequestBody ChatRequest request) throws Exception {
-        String response = chatService.askGPT(request.getMessage());
-        return new ChatResponse(response);
+    public ChatBotController(GeminiService geminiService, RouteService routeService) {
+        this.geminiService = geminiService;
+        this.routeService = routeService;
+    }
+
+    // 🧠 Gemini chatbot endpoint
+    @PostMapping("/chat")
+    public Mono<ResponseEntity<Map<String, String>>> chat(@RequestBody Map<String, String> request) {
+        String prompt = request.get("message");
+        return geminiService.generateResponse(prompt)
+                .map(response -> ResponseEntity.ok(Map.of("response", response)));
+    }
+
+    // 🚗 OpenRouteService route endpoint
+    @GetMapping("/route")
+    public Mono<ResponseEntity<String>> getRoute(@RequestParam String start, @RequestParam String end) {
+        return routeService.getRoute(start, end)
+                .map(ResponseEntity::ok);
     }
 }

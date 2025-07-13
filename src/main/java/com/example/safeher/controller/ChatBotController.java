@@ -25,7 +25,10 @@ public class ChatBotController {
     public Mono<ResponseEntity<Map<String, String>>> chat(@RequestBody Map<String, String> request) {
         String prompt = request.get("message");
         return geminiService.generateResponse(prompt)
-                .map(response -> ResponseEntity.ok(Map.of("response", response)));
+                .map(response -> ResponseEntity.ok(Map.of("response", response)))
+                .onErrorResume(ex -> Mono.just(ResponseEntity
+                        .status(500)
+                        .body(Map.of("response", "An error occurred while generating a response."))));
     }
 
     // 🚗 OpenRouteService route endpoint

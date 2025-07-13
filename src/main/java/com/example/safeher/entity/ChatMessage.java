@@ -1,7 +1,10 @@
 package com.example.safeher.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -14,13 +17,14 @@ public class ChatMessage {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String uid; // Firebase UID of the user
+    Long id;
 
     private boolean isUser;
+    private String sessionId;
+    private String uid;
 
-    private String text; // The message content (user or bot)
+    @Column(columnDefinition = "TEXT")
+    private String text;
 
     private LocalDateTime timestamp;
 }

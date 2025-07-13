@@ -1,5 +1,6 @@
 package com.example.safeher.controller;
 
+import com.example.safeher.entity.ChatSession;
 import com.example.safeher.entity.ChatMessage;
 import com.example.safeher.service.ChatHistoryService;
 import com.example.safeher.service.GeminiService;
@@ -8,71 +9,89 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/chat")
 public class ChatBotController {
 
     private final GeminiService geminiService;
     private final RouteService routeService;
     private final ChatHistoryService chatHistoryService;
 
-    public ChatBotController(GeminiService geminiService,
-                             RouteService routeService,
-                             ChatHistoryService chatHistoryService) {
+    public ChatBotController(GeminiService geminiService, RouteService routeService, ChatHistoryService chatHistoryService) {
         this.geminiService = geminiService;
         this.routeService = routeService;
         this.chatHistoryService = chatHistoryService;
     }
 
-    // 💬 Chat endpoint: Stores both user and bot messages for a user
-    @PostMapping("/chat")
-    public Mono<ResponseEntity<Map<String, String>>> chat(
+    /**
+     * Creates a new chat session and returns the session ID.
+     */
+    @PostMapping("/session")
+    public ResponseEntity<Map<String, String>> createSession(@RequestHeader("X-USER-UID") String uid) {
+        ChatSession session = chatHistoryService.createSession(uid);
+        return ResponseEntity.ok(Map.of("sessionId", session.getSessionId()));
+    }
+
+    /**
+     * Sends a message in a session and returns bot response.
+     */
+    @PostMapping
+    public Mono<ResponseEntity<Map<String, String>>> sendMessage(
             @RequestHeader("X-USER-UID") String uid,
-            @RequestBody Map<String, String> request) {
+            @RequestBody Map<String, String> body
+    ) {
+        String sessionId = body.get("sessionId");
+        String message = body.get("message");
 
-        String userMessage = request.get("message");
+        if (sessionId == null || sessionId.isBlank()) {
+            return Mono.just(ResponseEntity.badRequest()
+                    .body(Map.of("error", "Missing sessionId")));
+        }
 
-        // Save user's message
-        chatHistoryService.saveMessage(ChatMessage.builder()
-                .uid(uid)
-                .text(userMessage)
-                .isUser(true)
-                .timestamp(LocalDateTime.now())
-                .build());
+        if (message == null || message.isBlank()) {
+            return Mono.just(ResponseEntity.badRequest()
+                    .body(Map.of("error", "Message cannot be empty")));
+        }
 
-        // Generate bot response and save it
-        return geminiService.generateResponse(userMessage)
-                .map(botResponse -> {
-                    chatHistoryService.saveMessage(ChatMessage.builder()
-                            .uid(uid)
-                            .text(botResponse)
-                            .isUser(false)
-                            .timestamp(LocalDateTime.now())
-                            .build());
+        // Save user message
+        chatHistoryService.saveMessage(uid, sessionId, message, true);
 
-                    return ResponseEntity.ok(Map.of("response", botResponse));
+        return geminiService.generateResponse(message)
+                .map(botReply -> {
+                    chatHistoryService.saveMessage(uid, sessionId, botReply, false);
+                    return ResponseEntity.ok(Map.of("response", botReply));
                 })
-                .onErrorResume(ex -> Mono.just(ResponseEntity
-                        .status(500)
-                        .body(Map.of("response", "An error occurred while generating a response."))));
+                .onErrorResume(e -> Mono.just(ResponseEntity.status(500)
+                        .body(Map.of("response", "Error: " + e.getMessage()))));
     }
 
-    // 📜 Endpoint to fetch chat history for a user by Firebase UID
-    @GetMapping("/chat/history")
-    public ResponseEntity<List<ChatMessage>> getChatHistory(@RequestHeader("X-USER-UID") String uid) {
-        List<ChatMessage> history = chatHistoryService.getMessagesByUser(uid);
-        return ResponseEntity.ok(history);
+    /**
+     * Fetches chat sessions for a user.
+     */
+    @GetMapping("/history/sessions")
+    public ResponseEntity<List<ChatSession>> getChatSessions(@RequestHeader("X-USER-UID") String uid) {
+        return ResponseEntity.ok(chatHistoryService.listSessions(uid));
     }
 
-    // 🗺️ Safe route suggestion
+    /**
+     * Fetches messages for a specific session.
+     */
+    @GetMapping("/history/{sessionId}")
+    public ResponseEntity<List<ChatMessage>> getSessionMessages(
+            @RequestHeader("X-USER-UID") String uid,
+            @PathVariable String sessionId
+    ) {
+        return ResponseEntity.ok(chatHistoryService.getMessages(uid, sessionId));
+    }
+
+    /**
+     * Fetches safe route information (moved to /api/route endpoint).
+     */
     @GetMapping("/route")
-    public Mono<ResponseEntity<String>> getRoute(
-            @RequestParam String start,
-            @RequestParam String end) {
+    public Mono<ResponseEntity<String>> getRoute(@RequestParam String start, @RequestParam String end) {
         return routeService.getRoute(start, end).map(ResponseEntity::ok);
     }
 }

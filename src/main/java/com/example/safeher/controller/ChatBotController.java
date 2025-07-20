@@ -56,12 +56,14 @@ public class ChatBotController {
                     .body(Map.of("error", "Message cannot be empty")));
         }
 
-        // Save user message
+        // ✅ Save user message
         chatHistoryService.saveMessage(uid, sessionId, message, true);
 
         return geminiService.generateResponse(message)
                 .map(botReply -> {
+                    // ✅ Save bot message
                     chatHistoryService.saveMessage(uid, sessionId, botReply, false);
+
                     return ResponseEntity.ok(Map.of("response", botReply));
                 })
                 .onErrorResume(e -> Mono.just(ResponseEntity.status(500)
@@ -92,6 +94,7 @@ public class ChatBotController {
      */
     @GetMapping("/route")
     public Mono<ResponseEntity<String>> getRoute(@RequestParam String start, @RequestParam String end) {
-        return routeService.getRoute(start, end).map(ResponseEntity::ok);
+        return routeService.getSafestRoute(start, end)
+                .map(ResponseEntity::ok);
     }
 }
